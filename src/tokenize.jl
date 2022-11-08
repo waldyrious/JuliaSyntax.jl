@@ -937,6 +937,8 @@ function lex_forwardslash(l::Lexer)
         end
     elseif accept(l, '=')
         return emit(l, K"/=")
+    elseif accept(l, '>')
+        return emit(l, K"/>")
     else
         return emit(l, K"/")
     end
@@ -945,6 +947,8 @@ end
 function lex_backslash(l::Lexer)
     if accept(l, '=')
         return emit(l, K"\=")
+    elseif accept(l, '>')
+        return emit(l, K"\>")
     end
     return emit(l, K"\\")
 end

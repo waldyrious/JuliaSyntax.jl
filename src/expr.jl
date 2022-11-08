@@ -11,6 +11,22 @@ function is_stringchunk(node)
     return k == K"String" || k == K"CmdString"
 end
 
+function lower_underscores(args, skiparg=-1)
+    g = nothing
+    for i in 1:length(args)
+        if i == skiparg
+            continue
+        end
+        if args[i] == :_
+            if isnothing(g)
+                g = gensym()
+            end
+            args[i] = g
+        end
+    end
+    return g
+end
+
 function reorder_parameters!(args, params_pos)
     p = 0
     for i = length(args):-1:1
@@ -125,7 +141,7 @@ function _to_expr(node::SyntaxNode; iteration_spec=false, need_linenodes=true,
         args[2] = _to_expr(node_args[2])
     else
         eq_to_kw_in_call =
-            headsym == :call && is_prefix_call(node)          ||
+            (headsym == :call || headsym == Symbol("/>")) && is_prefix_call(node)          ||
             headsym == :ref
         eq_to_kw_all = headsym == :parameters && !inside_vect_or_braces ||
                       (headsym == :tuple && inside_dot_expr)
@@ -168,7 +184,16 @@ function _to_expr(node::SyntaxNode; iteration_spec=false, need_linenodes=true,
             headsym = Symbol("'")
         end
         # Move parameters blocks to args[2]
+        g = lower_underscores(args, 1)
         reorder_parameters!(args, 2)
+        if !isnothing(g)
+            return Expr(:->, g, Expr(:call, args...))
+        end
+    elseif headsym == :.
+        g = lower_underscores(args)
+        if !isnothing(g)
+            return Expr(:->, g, Expr(:., args...))
+        end
     elseif headsym in (:tuple, :vect, :braces)
         # Move parameters blocks to args[1]
         reorder_parameters!(args, 1)
@@ -278,9 +303,24 @@ function _to_expr(node::SyntaxNode; iteration_spec=false, need_linenodes=true,
             args[1] = Expr(headsym, args[1].args...)
             headsym = :const
         end
+    elseif headsym == Symbol("/>")
+        freearg = gensym()
+        cargs = [args[1], freearg, args[2:end]...]
+        reorder_parameters!(cargs, 2)
+        return Expr(:->, freearg, Expr(:call, cargs...))
+    elseif headsym == Symbol("\\>")
+        freearg = gensym()
+        cargs = [args[1], args[2:end]..., freearg]
+        reorder_parameters!(cargs, 2)
+        return Expr(:->, freearg, Expr(:call, cargs...))
+    elseif headsym == :chain
+        return Expr(:call, :(JuliaSyntax.chain), args...)
     end
     return Expr(headsym, args...)
 end
+
+chain(x, f, fs...) = chain(f(x), fs...)
+chain(x) = x
 
 Base.Expr(node::SyntaxNode) = _to_expr(node)
 
